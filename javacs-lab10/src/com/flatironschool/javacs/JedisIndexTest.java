@@ -2,7 +2,7 @@
  * 
  */
 package com.flatironschool.javacs;
-
+import java.util.*;
 import static org.junit.Assert.*;
 import static org.hamcrest.CoreMatchers.*;
 
@@ -47,11 +47,11 @@ public class JedisIndexTest {
 		WikiFetcher wf = new WikiFetcher();
 
 		url1 = "https://en.wikipedia.org/wiki/Java_(programming_language)";
-		Elements paragraphs = wf.readWikipedia(url1);
+		Elements paragraphs = wf.fetchWikipedia(url1);
 		index.indexPage(url1, paragraphs);
 		
 		url2 = "https://en.wikipedia.org/wiki/Programming_language";
-		paragraphs = wf.readWikipedia(url2);
+		paragraphs = wf.fetchWikipedia(url2);
 		index.indexPage(url2, paragraphs);
 	}
 
@@ -66,10 +66,38 @@ public class JedisIndexTest {
 	/**
 	 * Test method for {@link com.flatironschool.javacs.JedisIndex#getCounts(java.lang.String)}.
 	 */
+//  @Test
+//  public void testAdd() {
+//    Map<String, Integer> map = new 
+//  }
 	@Test
 	public void testGetCounts() {
 		Map<String, Integer> map = index.getCounts("the");
-		assertThat(map.get(url1), is(339));
+//    String value = jedis.hget(index.termCounterKey(url1), "the");
+//    assertThat(value, is("339"));
+//    assertThat(index.getURLs("the"), hasItem(url1));
+//    assertThat(index.getURLs("the"), hasItem(url2));
+		assertThat(map.get(url1), is(346));
 		assertThat(map.get(url2), is(264));
 	}
+
+  @Test
+  public void testGetCount() {
+		Integer count1 = index.getCount(url1, "the");
+		Integer count2 = index.getCount(url2, "the");
+		assertThat(count1, is(346));
+		assertThat(count2, is(264));
+  }
+
+  @Test
+  public void testPushTermCounterToRedis() throws Exception{
+    
+		WikiFetcher wf = new WikiFetcher();
+		Elements paragraphs = wf.fetchWikipedia(url1);
+    TermCounter tc = new TermCounter(url1);
+    tc.processElements(paragraphs);
+    List<Object> contents = index.pushTermCounterToRedis(tc);
+    assertThat(contents.size(), not(0));
+    assertThat(jedis.hget(tc.getLabel(), "the"), is("346"));
+  }
 }

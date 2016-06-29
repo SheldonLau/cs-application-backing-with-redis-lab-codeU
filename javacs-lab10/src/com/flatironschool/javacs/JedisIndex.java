@@ -30,6 +30,18 @@ public class JedisIndex {
 	public JedisIndex(Jedis jedis) {
 		this.jedis = jedis;
 	}
+
+  public void add(String term, TermCounter tc) {
+    
+    // get key of set value 
+    String mykey = urlSetKey(term);
+
+    // get member to add to set value
+    String member = tc.getLabel();
+
+    // add set value to specified member
+    jedis.sadd(mykey, member);
+  }
 	
 	/**
 	 * Returns the Redis key for a given search term.
@@ -45,7 +57,7 @@ public class JedisIndex {
 	 * 
 	 * @return Redis key.
 	 */
-	private String termCounterKey(String url) {
+	public String termCounterKey(String url) {
 		return "TermCounter:" + url;
 	}
 
@@ -67,19 +79,73 @@ public class JedisIndex {
 	 * @return Set of URLs.
 	 */
 	public Set<String> getURLs(String term) {
-        // FILL THIS IN!
-		return null;
-	}
+    String mykey = urlSetKey(term);
 
-    /**
+    // get all members of set associated with term key
+	  Set<String> urlSet = jedis.smembers(mykey);
+
+    return urlSet;
+
+  }
+  /**
+   * returns the number of times the given term appears in the given url 
+   */
+  public Integer getCounter(String url, String term) {
+    // get Redis key for termCounter
+    String mykey = termCounterKey(url);
+
+    // get term count associated with key
+    String count = jedis.hget(mykey, term);
+
+    // parse string 
+    return Integer.parseInt(count);
+  }
+  
+  /**
+   * Pushes the contents of TermCounter to Redis 
+   */
+  public List<Object> pushTermCounterToRedis(TermCounter tc) {
+    // group operations into transaction
+    Transaction t = jedis.multi();
+
+    String url = tc.getLabel();
+    String hashname = termCounterKey(url);
+
+    // check if content exists in Redis
+    t.del(hashname);
+
+    // get set of counted terms
+    Set<String> terms = tc.keySet();
+    
+    // add new hash entry for each term
+    for(String term : terms) {
+      Integer termCount = tc.get(term);
+      String count = termCount.toString();
+      t.hset(hashname, term, count);
+    }
+    // invoke exec on operations;
+    return t.exec();
+  }
+
+  /**
 	 * Looks up a term and returns a map from URL to count.
 	 * 
 	 * @param term
 	 * @return Map from URL to count.
 	 */
 	public Map<String, Integer> getCounts(String term) {
-        // FILL THIS IN!
-		return null;
+    // instantiate mapping
+		Map<String, Integer> map = new HashMap<String, Integer>();
+
+    // get set of urls associated with term
+		Set<String> urls = getURLs(term);
+
+    // put mapping from url to count
+    for(String url : urls) {
+      Integer count = getCount(url,term);
+      map.put(url, count);
+    }
+    return map;
 	}
 
     /**
@@ -90,8 +156,15 @@ public class JedisIndex {
 	 * @return
 	 */
 	public Integer getCount(String url, String term) {
-        // FILL THIS IN!
-		return null;
+    String termCounterKey = termCounterKey(url);
+
+    // lookup term count
+    String count = jedis.hget(termCounterKey, term);
+
+    // create Integer object based off of count
+    Integer num = new Integer(count);
+    
+    return num;
 	}
 
 
@@ -102,8 +175,17 @@ public class JedisIndex {
 	 * @param paragraphs  Collection of elements that should be indexed.
 	 */
 	public void indexPage(String url, Elements paragraphs) {
-        // FILL THIS IN!
-	}
+    // create TermCounter object to push to redis
+	  TermCounter tc = new TermCounter(url);
+    
+    // count words in paragraphs
+    tc.processElements(paragraphs);
+
+    // push to redis
+    pushTermCounterToRedis(tc);
+
+
+  }
 
 	/**
 	 * Prints the contents of the index.
@@ -223,9 +305,9 @@ public class JedisIndex {
 		Jedis jedis = JedisMaker.make();
 		JedisIndex index = new JedisIndex(jedis);
 		
-		//index.deleteTermCounters();
-		//index.deleteURLSets();
-		//index.deleteAllKeys();
+//		index.deleteTermCounters();
+//		index.deleteURLSets();
+//		index.deleteAllKeys();
 		loadIndex(index);
 		
 		Map<String, Integer> map = index.getCounts("the");
